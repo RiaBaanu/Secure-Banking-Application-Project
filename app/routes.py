@@ -1,4 +1,5 @@
 from flask import render_template, request, redirect, url_for, flash, Blueprint, jsonify, session
+import pyotp
 from app.models import User, Account, Transaction
 from app import db, limiter
 from datetime import datetime, date
@@ -15,32 +16,41 @@ def home():
     session.clear()
     return render_template('home.html')
 
-@main.route('/setup-2fa')
+@main.route('/setup-2fa', methods=['GET', 'POST'])
 def setup_2fa():
     if 'user_id' not in session:
-        flash("Please log in first.", "warning")
+        flash("You must be logged in to set up 2FA.", "danger")
         return redirect(url_for('main.login'))
 
     user = User.query.get(session['user_id'])
-    if not user:
-        flash("User not found.", "danger")
-        return redirect(url_for('main.login'))
 
-    # Generate provisioning URI
-    otp_uri = user.get_otp().provisioning_uri(name=user.email, issuer_name="Secure Banking App")
+    if request.method == 'POST':
+        otp = request.form.get('otp')
 
-    # Generate QR code image
-    img = qrcode.make(otp_uri)
+        if not otp:
+            flash("OTP is required.", "danger")
+            return redirect(url_for('main.setup_2fa'))
+
+        totp = pyotp.TOTP(user.otp_secret)
+        if totp.verify(otp):
+            user.is_2fa_enabled = True
+            db.session.commit()
+            flash("Two-Factor Authentication is now active.", "success")
+            return redirect(url_for('main.dashboard'))
+        else:
+            flash("Invalid OTP. Please try again.", "danger")
+            return redirect(url_for('main.setup_2fa'))
+
+    # GET method: render QR code
+    uri = pyotp.TOTP(user.otp_secret).provisioning_uri(name=user.email, issuer_name="Secure Banking App")
+    qr = qrcode.make(uri)
     buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
-    qr_code_b64 = base64.b64encode(buffer.getvalue()).decode()
+    qr.save(buffer, format='PNG')
+    qr_data = base64.b64encode(buffer.getvalue()).decode()
+    qr_code_data = f"data:image/png;base64,{qr_data}"
 
-    # Mark 2FA as completed
-    if not user.is_2fa_enabled: 
-        user.is_2fa_enabled = True
-        db.session.commit()
+    return render_template('setup_2fa.html', qr_code_data=qr_code_data, otp_uri=uri)
 
-    return render_template('setup_2fa.html', qr_code=qr_code_b64, otp_uri=otp_uri)
 
 @main.route('/register', methods=['GET', 'POST'])
 def register():

@@ -3,10 +3,19 @@
 <h3>Set Up Two-Factor Authentication (2FA)</h3>
 <p>Scan this QR code using Google Authenticator or any TOTP app:</p>
 
-<img src="data:image/png;base64,{{ qr_code }}" alt="QR Code"><br><br>
+<img src="{{ qr_code_data }}" alt="QR Code" style="width: 250px; height: 250px;"><br><br>
 
 <p>Or manually enter this secret into your app:</p>
 <code>{{ otp_uri }}</code>
 
-<a href="{{ url_for('main.dashboard') }}" class="btn btn-primary mt-4">Go to Dashboard</a>
+<form method="POST" action="{{ url_for('main.setup_2fa') }}" class="mt-4">
+  <div class="mb-3">
+    <label for="otp" class="form-label">Enter OTP from your Authenticator App</label>
+    <input type="text" name="otp" id="otp" class="form-control" required>
+  </div>
+  <button type="submit" class="btn btn-success">Verify and Activate 2FA</button>
+</form>
+
+  
+
 {% endblock %}
