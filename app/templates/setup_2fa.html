@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Set Up Two-Factor Authentication (2FA)</h3>
+<p>Scan this QR code using Google Authenticator or any TOTP app:</p>
+
+<img src="data:image/png;base64,{{ qr_code }}" alt="QR Code"><br><br>
+
+<p>Or manually enter this secret into your app:</p>
+<code>{{ otp_uri }}</code>
+
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-primary mt-4">Go to Dashboard</a>
+{% endblock %}
