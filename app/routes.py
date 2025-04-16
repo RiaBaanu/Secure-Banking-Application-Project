@@ -1,3 +1,4 @@
+# Flask & library imports
 from flask import render_template, request, redirect, url_for, flash, Blueprint, jsonify, session
 import pyotp
 from app.models import User, Account, Transaction
@@ -7,15 +8,24 @@ import re
 import qrcode
 import io
 import base64
+
+# Global constant for daily withdrawal cap
 DAILY_WITHDRAWAL_LIMIT = 1500.00  # You can adjust this
 
+# Flask Blueprint for organizing routes
 main = Blueprint('main', __name__)
 
+# ---------------------------------------
+# HOME PAGE
+# ---------------------------------------
 @main.route('/')
 def home():
     session.clear()
     return render_template('home.html')
 
+# ---------------------------------------
+# 2FA SETUP ROUTE
+# ---------------------------------------
 @main.route('/setup-2fa', methods=['GET', 'POST'])
 def setup_2fa():
     if 'user_id' not in session:
@@ -41,7 +51,7 @@ def setup_2fa():
             flash("Invalid OTP. Please try again.", "danger")
             return redirect(url_for('main.setup_2fa'))
 
-    # GET method: render QR code
+    # Generate QR code for GET request
     uri = pyotp.TOTP(user.otp_secret).provisioning_uri(name=user.email, issuer_name="Secure Banking App")
     qr = qrcode.make(uri)
     buffer = io.BytesIO()
@@ -51,7 +61,9 @@ def setup_2fa():
 
     return render_template('setup_2fa.html', qr_code_data=qr_code_data, otp_uri=uri)
 
-
+# ---------------------------------------
+# USER REGISTRATION
+# ---------------------------------------
 @main.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -63,11 +75,12 @@ def register():
             flash('All fields are required.', 'danger')
             return redirect(url_for('main.register'))
 
-        # ✅ Password Strength Check
+        # Password must be strong
         if len(password) < 8 or not re.search(r"\d", password) or not re.search(r"[A-Z]", password):
             flash("Password must include at least 8 characters, one number, and one uppercase letter.", "danger")
             return redirect(url_for('main.register'))
 
+        # Prevent duplicate accounts
         if User.query.filter_by(username=username).first():
             flash("Username already exists.", "warning")
             return redirect(url_for('main.register'))
@@ -76,7 +89,7 @@ def register():
             flash("Email already registered.", "warning")
             return redirect(url_for('main.register'))
 
-        # ✅ Create user & account
+       # Save user and create account
         new_user = User(username=username, email=email)
         new_user.set_password(password)
         db.session.add(new_user)
@@ -92,6 +105,9 @@ def register():
 
     return render_template('register.html')
 
+# ---------------------------------------
+# LOGIN WITH 2FA (LIMITED TO 5/MINUTE)
+# ---------------------------------------
 @main.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def login():
@@ -123,7 +139,9 @@ def login():
 
     return render_template('login.html')
 
-
+# ---------------------------------------
+# USER DASHBOARD WITH STATS
+# ---------------------------------------
 @main.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
@@ -132,6 +150,7 @@ def dashboard():
     user = User.query.get(session['user_id'])
     now = datetime.now()
 
+    # Monthly transaction summaries
     this_month_withdrawals = sum(
         t.amount for t in user.transactions
         if t.type == 'withdraw' and t.timestamp.month == now.month and t.timestamp.year == now.year
@@ -147,6 +166,9 @@ def dashboard():
                            monthly_deposits=this_month_deposits)
 
 
+# ---------------------------------------
+# CHECK BALANCE (used via API testing)
+# ---------------------------------------
 @main.route('/balance', methods=['POST'])
 def balance():
     data = request.get_json()
@@ -156,7 +178,9 @@ def balance():
         return jsonify({'balance': user.account.balance}), 200
     return jsonify({'error': 'User not found'}), 404
 
-
+# ---------------------------------------
+# DEPOSIT FUNDS
+# ---------------------------------------
 @main.route('/deposit', methods=['GET', 'POST'])
 def deposit():
     if 'user_id' not in session:
@@ -184,6 +208,9 @@ def deposit():
     return render_template('deposit.html')
 
 
+# ---------------------------------------
+# WITHDRAW FUNDS
+# ---------------------------------------
 @main.route('/withdraw', methods=['GET', 'POST'])
 def withdraw():
     if 'user_id' not in session:
@@ -199,7 +226,7 @@ def withdraw():
                 flash("Amount must be greater than zero.", "warning")
                 return redirect(url_for('main.withdraw'))
 
-            # ✅ Calculate today's total withdrawals
+            # Calculate today's withdrawals
             today = date.today()
             total_withdrawn_today = sum(
                 t.amount for t in user.transactions
@@ -228,6 +255,9 @@ def withdraw():
 
     return render_template('withdraw.html')
 
+# ---------------------------------------
+# OTP VERIFICATION (LIMITED TO 5/MINUTE)
+# ---------------------------------------
 @main.route('/verify-otp', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def verify_otp():
@@ -254,12 +284,18 @@ def verify_otp():
 
     return render_template('verify_otp.html')
 
+# ---------------------------------------
+# LOGOUT
+# ---------------------------------------
 @main.route('/logout')
 def logout():
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('main.login'))
 
+# ---------------------------------------
+# ERROR PAGES
+# ---------------------------------------
 @main.app_errorhandler(403)
 def forbidden(e):
     return render_template("403.html"), 403
